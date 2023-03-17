@@ -2,7 +2,7 @@
 
 from chrome import cms_update
 from setting import config
-from output import toExcel, extract
+from output import toExcel, toJson, extract
 
 import requests
 import time
@@ -50,14 +50,15 @@ def getRate(items):
                 continue
 
             item['evaluate'] = completion
+            print(title, '\n', completion)
 
             # 转换时间格式
             ptm = item['pubtime']
             dt = datetime.fromtimestamp(ptm)
             item["published_at"] = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-            # 总分默认为10分
-            mark = 18
+            # 总分默认为xx分
+            mark = 40
 
             # 抽取completion信息
             res = extract(completion)
@@ -68,16 +69,15 @@ def getRate(items):
             # 根据时间差调整分数
             mark = item['mark']
             if time_gap(ptm) > 48:
-                mark = mark - 2
+                mark = mark - 5
             elif time_gap(ptm) > 24:
-                mark = mark - 1
+                mark = mark - 3
             elif time_gap(ptm) > 12:
                 mark = mark
             else:
-                mark = mark + 1
+                mark = mark + 5
             item['mark'] = mark
 
-            print(title, '\n', completion)
             results.append(item)
             time.sleep(3)
 
@@ -112,18 +112,22 @@ def main():
         try:
             # 发送 API 请求并获取 JSON 响应
             response = requests.get(api)
-            if response:
-                # 将响应解析为JSON格式，并取出items中的前xx个元素
-                items = response.json()['items'][:32]
-
-                # 获取评分结果
-                result = getRate(items)
-
-                if result:
-                    results.extend(result)
-
         except Exception as e:
             print(e)
+
+        if not response:
+            continue
+
+        # 将响应解析为JSON格式，并取出items中的前xx个元素
+        items = response.json()['items'][:32]
+
+        # 获取评分结果
+        result = getRate(items)
+
+        if result:
+            # 备份获取的数据
+            toExcel(result)
+            results.extend(result)
 
     if results and len(results) >= 4:
 
@@ -132,7 +136,8 @@ def main():
             results, key=lambda x: x['mark'], reverse=True)
 
         # 备份获取的数据
-        toExcel(sorted_results)
+        path = toExcel(sorted_results)
+        toJson(path)
 
         cms = cms_update(sorted_results)
         cms.update()

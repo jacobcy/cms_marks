@@ -8,14 +8,18 @@ timestamp = int(time.time())
 
 
 def toJson(excel_path):
+
     # 读取 Excel 文件
     df = pd.read_excel(excel_path)
 
     # 删除不需要的列
-    df = df.drop(columns=['imgurl', 'pubtime', 'intro', 'url', 'published_at'])
+    df = df.drop(columns=['imgurl', 'pubtime', 'intro', 'url'])
+
+    # 重新生成指标数据
     try:
-        df = df.drop(columns=['keywords', 'hot_related', 'timeliness', 'news_value',
-                              'practicality', 'objectivity', 'wideness', 'public', 'popularity', 'mark'])
+        df = df.drop(columns=['keywords', 'hot_related', 'reason', 'mark'])
+        df = df.drop(columns=['timeliness', 'news_value', 'practicality', 'objectivity',
+                     'wideness', 'diversity', 'public', 'entertainment', 'popularity'])
     except:
         pass
 
@@ -23,22 +27,18 @@ def toJson(excel_path):
     items = df.to_dict('records')
 
     for item in items:
-        target = item['evaluate']
+        evaluate = item['evaluate']
         # print(target)
-        res = extract(target)
+        res = extract(evaluate)
         if res:
             for label, value in res.items():
                 item[label] = value
-            item['keywords'] = re.sub(r'[,，、]', ' ', item['keywords'])
-            item['keywords'] = re.sub(r'[^\w\s]', '', item['keywords']).strip()
-            # 替换冒号
-            item['reason'] = re.sub('[：:]', '', item['reason']).strip()
-            # print(label, value)
+                # print(label, value)
 
     # 将json数据展平
     df = pd.json_normalize(items)
 
-    # 重命名
+    # 表头重命名为中文
     df1 = df.drop(columns=['evaluate'])
     try:
         df1 = df1.rename(columns={
@@ -47,9 +47,10 @@ def toJson(excel_path):
             'practicality': '实用',
             'objectivity': '客观',
             'wideness': '广泛',
+            'diversity': '多元',
             'public': '公益',
-            'popularity': '流行',
-            'news_value': '新闻'
+            'entertainment': '娱乐',
+            'popularity': '流行'
         })
     except:
         pass
@@ -60,12 +61,14 @@ def toJson(excel_path):
 
     # 删除多余的列
     try:
-        df = df.drop(columns=['source_from', 'timeliness', 'news_value',
-                              'practicality', 'objectivity', 'wideness', 'public', 'popularity', 'mark'])
-        df = df.drop(columns=['keywords', 'hot_related', 'reason'])
+        df = df.drop(columns=['source_from', 'published_at'])
+        df = df.drop(columns=['keywords', 'hot_related', 'reason', 'mark'])
+        df = df.drop(columns=['timeliness', 'news_value', 'practicality', 'objectivity',
+                     'wideness', 'diversity', 'public', 'entertainment', 'popularity'])
     except:
         pass
     df = df.rename(columns={'title': 'prompt', 'evaluate': 'completion'})
+
     # 保存为jsonL格式的csv文件，用于上传训练
     jsonL_path = config.path + f'training_data_{timestamp}.csv'
     with open(jsonL_path, 'w', encoding='utf-8') as f:
@@ -84,7 +87,7 @@ def toExcel(sorted_results):
     excel_path = config.path + f'items_{timestamp}.xlsx'
     try:
         df.to_excel(excel_path, index=False)
-        toJson(excel_path)
+        return excel_path
 
     except Exception as e:
         print(e)
@@ -95,18 +98,23 @@ def extract(text):
     # 预处理输入内容，去除标点符号
     # text = re.sub(r'[^\w\s]', '', text)
 
-    # pattern = r"关键词(?P<keywords>.*?)\n.*?热搜.*?(?P<hot_related>是|否).*?时效性.*?(?P<timeliness>\d)分.*?新闻性.*?(?P<news_value>\d)分.*?实用性.*?(?P<practicality>\d)分.*?客观性.*?(?P<objectivity>\d)分.*?广泛性.*?(?P<wideness>\d)分.*?公益性.*?(?P<public>\d)分.*?流行度.*?(?P<popularity>\d)分.*?总分.*?(?P<mark>\d+)分"
-    # match = re.search(pattern, text, re.DOTALL)
-
     pattern = r"关键词(?P<keywords>.*?)\n.*?热搜.*?(?P<hot_related>是|否).*?理由(?P<reason>[\s\S]*)"
     match = re.search(pattern, text, re.DOTALL)
     result = match.groupdict() if match else {}
 
+    if result['keywords']:
+        result['keywords'] = re.sub(r'[,，、]', ' ', result['keywords'])
+        result['keywords'] = re.sub(r'[^\w\s]', '', result['keywords']).strip()
+
+    if result['reason']:
+        # 替换冒号
+        result['reason'] = re.sub('[：:]', '', result['reason']).strip()
+
     values = {'timeliness': 0, 'news_value': 1, 'practicality': 2,
-              'objectivity': 3, 'wideness': 4, 'public': 5, 'popularity': 6, 'mark': 7}
+              'objectivity': 3, 'wideness': 4, 'diversity': 5, 'public': 6, 'entertainment': 7, 'popularity': 8, 'mark': 9}
 
     patterns = [r"时效性.*?(?P<timeliness>\d)分", r"新闻性.*?(?P<news_value>\d)分", r"实用性.*?(?P<practicality>\d)分", r"客观性.*?(?P<objectivity>\d)分",
-                r"广泛性.*?(?P<wideness>\d)分", r"公益性.*?(?P<public>\d)分", r'流行度.*?(?P<popularity>\d)分', r'总分.*?(?P<mark>\d+)分']
+                r"广泛性.*?(?P<wideness>\d)分", r'多元化.*?(?P<diversity>\d)分', r"公益性.*?(?P<public>\d)分", r"娱乐性.*?(?P<entertainment>\d)分", r'流行度.*?(?P<popularity>\d)分', r'总分.*?(?P<mark>\d+)分']
 
     for item, value in values.items():
         match = re.search(patterns[value], text)
