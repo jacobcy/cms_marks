@@ -1,0 +1,85 @@
+# -*- coding: utf-8 -*-
+
+import openai
+from setting import config
+
+# 上传训练集到openAI服务器
+
+
+def upload(txt):
+    # 读取要上传的文件内容
+    with open(config.path + txt, "r", encoding="utf-8") as f:
+        file_contents = f.read()
+
+    # 创建文件
+    response = openai.File.create(file=file_contents, purpose="fine-tune")
+
+    # 获取文件ID
+    file_id = response.id
+    print("File ID:", file_id)
+    return file_id
+
+# 对训练集进行训练，获取模型id
+
+
+def train(file_id):
+    # Create a fine-tune object with your data
+    ft = openai.FineTune.create(
+        training_file=file_id,  # The ID of the file that contains your training data
+        model="curie",  # The base model to fine-tune
+        n_epochs=5,  # The number of epochs to train for
+        batch_size=8,  # The batch size for training
+        # learning_rate=1e-4, # The learning rate for training
+    )
+    ft.train()
+    print(f'Finetune id: {ft.id}')
+    return ft.id
+
+# 使用训练后的模型，获取答案
+
+
+def getAnswer(model, question):
+    if not model:
+        print('model is not ready,wait minutes!')
+        return
+    try:
+        completion = openai.Completion.create(
+            model=model, prompt=question, max_tokens=1000, temperature=0.8)
+        # print(completion)
+
+        result = completion.choices[0].text
+        print(f'question:{question}\nopenAI: {result}')
+        return result
+    except Exception as e:
+        print(e)
+
+
+# Set your OpenAI API key
+openai.api_key = config.key
+
+file_id = 'file-ixacWGAWy7CjmGq24y2lpe7I'
+if not file_id:
+    file_id = upload(r"output.csv")
+
+finetune_id = "ft-iHjiMYLT97z7k4ossGiL3P7d"
+if not finetune_id:
+    finetune_id = train(file_id)
+
+model = "curie:ft-silly-fish-2023-03-15-02-50-16"
+if not model:
+    # 通过 FineTune ID 获取 FineTune 对象
+    ft = openai.FineTune.retrieve(finetune_id)
+
+    # 获取训练状态和进度
+    if ft.status == "succeeded":
+        model = ft.fine_tuned_model
+
+# Use the fine-tuned model to generate a response
+questions = ["声生不息宝岛季官宣预告片，优缺点昭然若揭，那英带队连赢两场！",
+             "天赐的声音4开拍在即,嘉宾大换血,青年歌星更多！",
+             "中国电信计划在深圳率先部署vowifi",
+             "“天然电池酶”化空气为电能",
+             "openai公布gpt-4最新版本gpt-4模型",
+             "刘昊然出现在郑州车站，在众多保镖的簇拥下，与外国人谈笑风生！"]
+for question in questions:
+    getAnswer(model, question)

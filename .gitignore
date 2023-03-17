@@ -1,0 +1,9 @@
+setting.py
+*.pyc
+*.log
+*.js
+.vscode/
+data/
+*.txt
+*.csv
+*.xlsx
