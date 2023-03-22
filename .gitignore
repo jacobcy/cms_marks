@@ -4,6 +4,7 @@ setting.py
 *.js
 .vscode/
 data/
+temp/
 *.txt
 *.csv
 *.xlsx

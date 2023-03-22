@@ -1,27 +1,50 @@
 #!python
 
-# 导入selenium模块
-import time
-import pandas as pd
+import os
+import shutil
 import json
+import time
+import logging
+from datetime import datetime
 
+# 导入selenium模块
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchWindowException
+
 from setting import config
+from output import Excel
 
 
-class cms_update():
+def time_gap(timestamp):
+    # 将时间戳转换为 datetime 对象
+    dt = datetime.fromtimestamp(timestamp)
+
+    # 计算与当前时间的差
+    delta = datetime.now() - dt
+
+    # 计算差值的小时数
+    hours_diff = delta.seconds // 3600
+    return hours_diff
+
+# if time_gap(ptm) > 72:
+#     pass
+
+
+class CMS():
     def __init__(self, data=[]):
 
-        if not data:
-            # 读取 Excel 文件
-            df = pd.read_excel(config.path + r"items.xlsx")
-            # 转换为 JSON 格式
-            data = df.to_dict('records')
+        self.excel = Excel()
+
+        self.data = data
+        if not self.data:
+            self.data = self.excel.read_temp()
+
+        # 按照总分进行排序
+        self.data = sorted(self.data, key=lambda x: x['mark'], reverse=True)
 
         print(json.dumps(data[:1], indent=4, ensure_ascii=False))
         # 最多36个节点
@@ -52,14 +75,14 @@ class cms_update():
                     By.CSS_SELECTOR, css_selector1).click()
 
             except Exception as e:
-                print(f"无法点击链接 {css_selector1}: {e}")
+                logging.exception(f"无法点击链接 {css_selector1}: {e}")
 
             try:
                 self.wait.until(EC.presence_of_element_located(
                     (By.CSS_SELECTOR, css_selector2)))
                 return
             except Exception as e:
-                print(f"无法找到下一个链接 {css_selector2}: {e}")
+                logging.exception(f"无法找到下一个链接 {css_selector2}: {e}")
 
         # 如果超过最大重试次数仍然无法进入下一步，则抛出异常
         raise Exception("无法进入下一步")
@@ -159,13 +182,20 @@ class cms_update():
             except NoSuchWindowException:
                 self.driver.switch_to.default_content()
 
-        time.sleep(5)
         self.driver.get(config.execute_url)
+        time.sleep(5)
+
+        # 备份数据
+        path = self.excel.save('data', self.data)
+        self.excel.toJson(path)
+
+        # 清空temp文件夹
+        shutil.rmtree('temp')
+        os.mkdir('temp')
 
         # 关闭浏览器
         self.driver.quit()
 
 
 if __name__ == "__main__":
-    cms = cms_update()
-    cms.update()
+    CMS().update()

@@ -1,151 +1,136 @@
 #!python
-
-from chrome import cms_update
-from setting import config
-from output import toExcel, toJson, extract
-
-import requests
 import time
-from datetime import datetime
 import openai
+import logging
+import requests
+from datetime import datetime
 
-# 使用 API 密钥进行身份验证
-openai.api_key = config.key
+from setting import config
+from output import Excel
+from chrome import CMS
 
-
-def time_gap(timestamp):
-    # 将时间戳转换为 datetime 对象
-    dt = datetime.fromtimestamp(timestamp)
-
-    # 计算与当前时间的差
-    delta = datetime.now() - dt
-
-    # 计算差值的小时数
-    hours_diff = delta.seconds // 3600
-    return hours_diff
+# 日志配置
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s: %(message)s')
 
 
-def getRate(items):
-    results = []
-    conversation = config.conversation
-    # 循环遍历标题数组
-    for item in items:
-        if item['url'] and item['imgurl'] and item['title'] and item['intro'] and len(item['intro']) > 100:
-            title = item['title']
-            intro = item['intro']
+class Marks():
+    def __init__(self):
+        self.keys = config.keys
+        openai.api_key = self.keys.pop(0)
 
-            # 重命from名字段后保存
-            source_from = item.pop('from')
-            item["source_from"] = source_from
+        self.excel = Excel()
+        # 先读取temp中的excel数据
+        self.data = self.excel.read_temp()
 
-            conversation = conversation[:1]
-            conversation.append({
-                'role': 'user',
-                'content': f'新闻标题:{title}\n新闻介绍:{intro}\n新闻来源:{source_from}'
-            })
+    def getRate(self, items):
+        error = 0
+        results = []
+        urls = [i['url'] for i in self.data]
 
-            # 调用 getResult() 方法获取 ChatGPT 返回的结果，等待其返回
-            completion = getResult(conversation)
-            if not completion:
+        conversation = config.conversation
+        print(conversation[0]['content'])
+
+        # 循环遍历标题数组
+        for item in items:
+
+            if item['url'] and item['imgurl'] and item['title'] and item['intro'] and len(item['intro']) > 50:
+                if item['url'] in urls:  # 判断url是否存在于self.data中
+                    print(f'临时文件中已存在{item["title"]}\n')
+                    continue
+
+                title = item['title']
+                intro = item['intro']
+
+                # 重命from名字段后保存
+                source_from = item.pop('from')
+                item["source_from"] = source_from
+
+                conversation = conversation[:1]
+                conversation.append({
+                    'role': 'user',
+                    'content': f'新闻标题:{title}\n新闻介绍:{intro}\n新闻来源:{source_from}'
+                })
+
+                # 调用 getResult() 方法获取 ChatGPT 返回的结果，等待其返回
+                completion = self.getResult(conversation)
+                if not completion:
+                    error += 1
+                    if error > 5:
+                        logging.exception('API key 错误')
+                        return results
+                    else:
+                        continue
+
+                item['evaluate'] = completion
+                print(title, '\n', completion, '\n')
+
+                # 转换时间格式
+                dt = datetime.fromtimestamp(item['pubtime'])
+                item["published_at"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+                # 抽取completion信息
+                res = self.excel.extract(completion)
+                if res:
+                    for label, value in res.items():
+                        item[label] = value
+
+                results.append(item)
+                time.sleep(3)
+
+        # 返回打分结果
+        return results
+
+    # 根据内容获取评分结果
+
+    def getResult(self, prompt):
+        try:
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo", messages=prompt,  temperature=0.1)
+            # 获取结果字符串
+            text = completion.choices[0].message.content.strip()
+
+            # 返回评分结果
+            return text
+
+        except Exception as e:
+            logging.exception(e)
+            # 切换 API 密钥
+            if self.keys:
+                openai.api_key = self.keys.pop(0)
+            else:
+                logging.exception('No API key available!')
+            return None
+
+    # 主函数
+    def main(self):
+        for api in config.apis:
+            try:
+                # 发送 API 请求并获取 JSON 响应
+                response = requests.get(api)
+            except Exception as e:
+                logging.exception(e)
                 continue
 
-            item['evaluate'] = completion
-            print(title, '\n', completion)
+            # 将响应解析为JSON格式，并取出items中的前xx个元素
+            items = response.json()['items'][:32]
 
-            # 转换时间格式
-            ptm = item['pubtime']
-            dt = datetime.fromtimestamp(ptm)
-            item["published_at"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+            # 获取评分结果
+            result = self.getRate(items)
 
-            # 总分默认为xx分
-            mark = 40
+            if result:
+                # 备份临时数据
+                self.data.extend(result)
+                self.excel.save('temp', self.data)
 
-            # 抽取completion信息
-            res = extract(completion)
-            if res:
-                for label, value in res.items():
-                    item[label] = value
+        if self.data and len(self.data) >= 12:
 
-            # 根据时间差调整分数
-            mark = item['mark']
-            if time_gap(ptm) > 48:
-                mark = mark - 5
-            elif time_gap(ptm) > 24:
-                mark = mark - 3
-            elif time_gap(ptm) > 12:
-                mark = mark
-            else:
-                mark = mark + 5
-            item['mark'] = mark
+            # 更新CMS
+            CMS(self.data).update()
 
-            results.append(item)
-            time.sleep(3)
-
-    # 返回打分结果
-    return results
-
-
-# 根据内容获取评分结果
-
-
-def getResult(prompt):
-    try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo", messages=prompt,  temperature=0.1)
-        # 获取结果字符串
-        text = completion.choices[0].message.content.strip()
-
-        # 返回评分结果
-        return text
-
-    except Exception as e:
-        print(e)
-
-
-def main():
-
-    apis = config.apis
-
-    results = []
-
-    for api in apis:
-        try:
-            # 发送 API 请求并获取 JSON 响应
-            response = requests.get(api)
-        except Exception as e:
-            print(e)
-
-        if not response:
-            continue
-
-        # 将响应解析为JSON格式，并取出items中的前xx个元素
-        items = response.json()['items'][:32]
-
-        # 获取评分结果
-        result = getRate(items)
-
-        if result:
-            # 备份获取的数据
-            toExcel(result)
-            results.extend(result)
-
-    if results and len(results) >= 4:
-
-        # 汇总后对总分进行排序
-        sorted_results = sorted(
-            results, key=lambda x: x['mark'], reverse=True)
-
-        # 备份获取的数据
-        path = toExcel(sorted_results)
-        toJson(path)
-
-        cms = cms_update(sorted_results)
-        cms.update()
-
-    else:
-        print('There are no sufficient news to update!')
+        else:
+            logging.exception('There are no sufficient news to update!')
 
 
 if __name__ == "__main__":
-
-    main()
+    Marks().main()
