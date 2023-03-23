@@ -48,11 +48,12 @@ class config:
     execute_url = ''
 
     apis = []
+    waiting_time = 6
 
     # chatgpt部分
     key = ''
     hotwords = headline()
-    index = f'时效性: x分\t新闻性: x分\t实用性: x分\t客观性: x分\t广泛性: x分\t多元化: x分\t公益性: x分\t娱乐性: x分\t流行度: x分\t总分: y分'
+    index = f'时效性: x分\t新闻性: x分\t实用性: x分\t客观性: x分\t广泛性: x分\t多元化: x分\t娱乐性: x分\t话题度: x分\t总分: y分'
 
     conversation = [{
         'role': 'system', 'content': f'''
@@ -67,14 +68,14 @@ class config:
             e. 广泛性：评估新闻事件的地域影响范围，全国>(北京、上海)>省>地级市。
             f. 多元化：考虑报道内容是否丰富，而非对单一产品或品牌进行商业性宣传。
             g. 娱乐性：考虑内容在吸引读者兴趣、引发情感反应方面的表现。
-            h. 流行度：衡量内容与“今日热搜”的相关性。
+            h. 话题度：衡量内容与“今日热搜”的相关性。
 
         今日热搜:{hotwords.aggre()}
 
         按照以下格式回复:
         关键词: aaa\tbbb\tccc
         热搜: 是|否
-        时效性: x分\t新闻性: x分\t实用性: x分\t客观性: x分\t广泛性: x分\t多元化: x分\t娱乐性: x分\t流行度: x分
+        时效性: x分\t新闻性: x分\t实用性: x分\t客观性: x分\t广泛性: x分\t多元化: x分\t娱乐性: x分\t话题度: x分
         总分: y分
         评价理由: zzzzzzz
         '''}]

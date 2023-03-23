@@ -6,6 +6,7 @@ import re
 import time
 import logging
 import pandas as pd
+from setting import config
 
 
 class Excel():
@@ -28,21 +29,30 @@ class Excel():
     # 读取temp文件夹中的excel文件
     def read_temp(self):
         data = []
-        if os.path.exists('temp'):
-            files = os.listdir('temp')
-            print(files)
+
+        temp = os.path.join(config.folder, 'temp')
+        logging.info('正在读取temp文件夹中的文件')
+
+        if not os.path.exists(temp):
+            os.mkdir('temp')
+            logging.info('创建temp文件夹')
+
+        else:
+            files = os.listdir(temp)
+            logging.info(f'读取temp文件夹中的文件: {files}')
+
             for file in files:
                 if file.endswith('.xlsx'):
                     # 读取文件
                     new_data = self.read(
-                        os.path.join(os.getcwd(), 'temp', file))
+                        os.path.join(config.folder, 'temp', file))
                     # 去重
                     for item in new_data:
                         if item not in data:
                             data.append(item)
 
             mounts = len(data)
-            print(f'已读取temp文件夹中【{mounts}】条数据')
+            logging.info(f'已读取temp文件夹中【{mounts}】条数据')
         return data
 
     # 保存文件
@@ -55,7 +65,8 @@ class Excel():
         random = str(int(time.time()))[-3:]
 
         excel_path = os.path.join(
-            os.getcwd(), folder, f'items_{self.timestamp}_{random}.xlsx')
+            config.folder, folder, f'items_{self.timestamp}_{random}.xlsx')
+        logging.info(f"正在保存文件: {excel_path}")
 
         try:
             df.to_excel(excel_path, index=False)
@@ -71,35 +82,30 @@ class Excel():
         df = pd.read_excel(excel_path)
 
         # 删除不需要的列
-        df = df.drop(columns=['imgurl', 'pubtime', 'intro', 'url'])
+        df = df.drop(columns=['imgurl', 'pubtime',
+                     'published_at', 'intro', 'url'])
 
         # 重新生成指标数据
-        try:
-            df = df.drop(columns=['keywords', 'hot_related', 'reason'])
-            df = df.drop(columns=self.columns)
-        except:
-            pass
-
-        # 转换为 JSON 格式
-        items = df.to_dict('records')
-
-        for item in items:
-            evaluate = item['evaluate']
-
-            res = self.extract(evaluate)
-            if res:
-                for label, value in res.items():
-                    item[label] = value
-                    # print(label, value)
-
+        # try:
+        #     df = df.drop(columns=['keywords', 'hot_related', 'reason'])
+        #     df = df.drop(columns=self.columns)
+        # except:
+        #     pass
+        # items = df.to_dict('records')
+        # for item in items:
+        #     evaluate = item['evaluate']
+        #     res = self.extract(evaluate)
+        #     if res:
+        #         for label, value in res.items():
+        #             item[label] = value
         # 将json数据展平
-        df = pd.json_normalize(items)
+        # df = pd.json_normalize(items)
 
-        # 表头重命名为中文
         df1 = df.drop(columns=['evaluate'])
         trans_columns = ['时效', '新闻', '实用', '客观', '广泛', '多元', '娱乐', '流行', '总分']
-
         mapping = dict(zip(self.columns, trans_columns))
+
+        # 表头重命名为中文
         try:
             names = mapping
             df1 = df1.rename(columns=names)
@@ -107,21 +113,21 @@ class Excel():
             pass
 
         # 保存json格式的csv文件，便于查看评分
-        json_path = os.path.join(os.getcwd(), 'data',
+        json_path = os.path.join(config.folder, 'data',
                                  f'output_{self.timestamp}.csv')
         df1.to_csv(json_path, index=False, encoding='utf-8-sig')
 
         # 删除多余的列
         try:
-            df = df.drop(columns=['source_from', 'published_at'])
-            df = df.drop(columns=['keywords', 'hot_related', 'reason'])
+            df = df.drop(
+                columns=['source_from', 'keywords', 'hot_related', 'reason'])
             df = df.drop(columns=self.columns)
         except:
             pass
         df = df.rename(columns={'title': 'prompt', 'evaluate': 'completion'})
 
         # 保存为jsonL格式的csv文件，用于上传训练
-        jsonL_path = os.path.join(os.getcwd(), 'data',
+        jsonL_path = os.path.join(config.folder, 'data',
                                   f'training_data_{self.timestamp}.csv')
 
         with open(jsonL_path, 'w', encoding='utf-8') as f:
@@ -161,7 +167,7 @@ class Excel():
             r"广泛性.*?(?P<wideness>\d)分",
             r'多元化.*?(?P<diversity>\d)分',
             r"娱乐性.*?(?P<entertainment>\d)分",
-            r'流行度.*?(?P<popularity>\d)分',
+            r'话题度.*?(?P<popularity>\d)分',
             r'总分.*?(?P<mark>\d+)分'
         ]
 
@@ -184,10 +190,10 @@ if __name__ == "__main__":
         广泛性: 2分。该新闻只涉及一个品牌和一个产品系列，对不同受众的吸引力不高。
         多元化: 1分。该新闻仅介绍了单一产品，没有公益性的视角。
         娱乐性: 2分。该新闻仅介绍了单一产品，没有娱乐性。
-        流行度: 2分。该新闻未出现在今日热搜，流行度不高。
+        话题度: 2分。该新闻未出现在今日热搜，话题度不高。
         总分: 19分。
 
-        评分理由: 该新闻在时效性方面得分较高，但在新闻性、实用性、广泛性和公益性方面得分较低。虽然客观性方面得分较高，但是该新闻仅仅介绍了单一产品，完全没有公益性的视角，是一篇软性广告。流行度方面得分也不高。综上所述，该新闻总分较低。
+        评分理由: 该新闻在时效性方面得分较高，但在新闻性、实用性、广泛性和公益性方面得分较低。虽然客观性方面得分较高，但是该新闻仅仅介绍了单一产品，完全没有公益性的视角，是一篇软性广告。话题度方面得分也不高。综上所述，该新闻总分较低。
     '''
     e = Excel()
     print(e.extract('text'))

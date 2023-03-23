@@ -5,6 +5,7 @@ setting.py
 .vscode/
 data/
 temp/
+log/
 *.txt
 *.csv
 *.xlsx

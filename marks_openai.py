@@ -1,4 +1,5 @@
 #!python
+import os
 import time
 import openai
 import logging
@@ -9,13 +10,11 @@ from setting import config
 from output import Excel
 from chrome import CMS
 
-# 日志配置
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s: %(message)s')
-
 
 class Marks():
+
     def __init__(self):
+
         self.keys = config.keys
         openai.api_key = self.keys.pop(0)
 
@@ -29,14 +28,14 @@ class Marks():
         urls = [i['url'] for i in self.data]
 
         conversation = config.conversation
-        print(conversation[0]['content'])
+        logging.info(conversation[0]['content'])
 
         # 循环遍历标题数组
         for item in items:
 
             if item['url'] and item['imgurl'] and item['title'] and item['intro'] and len(item['intro']) > 50:
                 if item['url'] in urls:  # 判断url是否存在于self.data中
-                    print(f'临时文件中已存在{item["title"]}\n')
+                    logging.info(f'临时文件中已存在{item["title"]}\n')
                     continue
 
                 title = item['title']
@@ -63,7 +62,8 @@ class Marks():
                         continue
 
                 item['evaluate'] = completion
-                print(title, '\n', completion, '\n')
+                logging.info(f"{title}\n{completion}\n")
+                print(f"{title}\n{completion}\n")
 
                 # 转换时间格式
                 dt = datetime.fromtimestamp(item['pubtime'])
@@ -76,7 +76,7 @@ class Marks():
                         item[label] = value
 
                 results.append(item)
-                time.sleep(3)
+                time.sleep(config.waiting_time)
 
         # 返回打分结果
         return results
@@ -85,6 +85,7 @@ class Marks():
 
     def getResult(self, prompt):
         try:
+            logging.info('正在获取评分结果...')
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo", messages=prompt,  temperature=0.1)
             # 获取结果字符串
@@ -94,6 +95,7 @@ class Marks():
             return text
 
         except Exception as e:
+            logging.info('Here is the error: ')
             logging.exception(e)
             # 切换 API 密钥
             if self.keys:
@@ -113,7 +115,7 @@ class Marks():
                 continue
 
             # 将响应解析为JSON格式，并取出items中的前xx个元素
-            items = response.json()['items'][:32]
+            items = response.json()['items'][:config.api_content_number]
 
             # 获取评分结果
             result = self.getRate(items)
@@ -133,4 +135,18 @@ class Marks():
 
 
 if __name__ == "__main__":
+
+    # 日志配置
+    random = str(int(time.time()))[-3:]
+    log_path = os.path.join(config.folder, 'log', f'myapp_{random}.log')
+    print(log_path)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        filename=log_path,
+        filemode='w',
+        format='%(asctime)s - %(levelname)s: %(message)s',
+        encoding='utf-8')
+    logging.info(f'Start running...')
+
     Marks().main()
