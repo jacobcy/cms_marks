@@ -1,7 +1,5 @@
 #!python
 
-import os
-import shutil
 import json
 import time
 import logging
@@ -37,18 +35,22 @@ def time_gap(timestamp):
 class CMS():
     def __init__(self, data=[]):
 
+        logging.info('正在打开浏览器...\n')
+
         self.excel = Excel()
 
-        self.data = data
-        if not self.data:
-            self.data = self.excel.read_temp()
+        self.raw_data = data
+        if not self.raw_data:
+            self.raw_data = self.excel.read_temp()
+            logging.info(f'读取临时文件中的数据{len(self.raw_data)}条\n')
 
         # 按照总分进行排序
-        self.data = sorted(self.data, key=lambda x: x['mark'], reverse=True)
+        self.raw_data = sorted(
+            self.raw_data, key=lambda x: x['mark'], reverse=True)
 
-        print(json.dumps(data[:1], indent=4, ensure_ascii=False))
         # 最多36个节点
-        self.data = data[:36]
+        self.data = self.raw_data[:36]
+        logging.info(json.dumps(self.data[:1], indent=4, ensure_ascii=False))
 
         # 创建一个Options对象，并添加detach选项
         chrome_options = Options()
@@ -111,6 +113,10 @@ class CMS():
     # 利用selenium更新cms中的数据
 
     def update(self):
+
+        if not self.data:
+            logging.info('没有数据需要更新')
+            return
 
         self.login()
 
@@ -186,16 +192,21 @@ class CMS():
         time.sleep(5)
 
         # 备份数据
-        path = self.excel.save('data', self.data)
+        path = self.excel.save('data', self.raw_data)
         self.excel.toJson(path)
 
         # 清空temp文件夹
-        shutil.rmtree('temp')
-        os.mkdir('temp')
+        self.excel.remove_temp()
 
         # 关闭浏览器
         self.driver.quit()
 
 
 if __name__ == "__main__":
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s: %(message)s',
+        encoding='utf-8')
+
     CMS().update()

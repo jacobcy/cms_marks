@@ -63,7 +63,7 @@ class Marks():
 
                 item['evaluate'] = completion
                 logging.info(f"{title}\n{completion}\n")
-                print(f"{title}\n{completion}\n")
+                print(f"{title}\n{completion}")
 
                 # 转换时间格式
                 dt = datetime.fromtimestamp(item['pubtime'])
@@ -74,6 +74,7 @@ class Marks():
                 if res:
                     for label, value in res.items():
                         item[label] = value
+                print(f'总分：{item["mark"]}\n')
 
                 results.append(item)
                 time.sleep(config.waiting_time)
@@ -85,9 +86,22 @@ class Marks():
 
     def getResult(self, prompt):
         try:
-            logging.info('正在获取评分结果...')
+            logging.info('正在获取评分结果...\n')
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo", messages=prompt,  temperature=0.1)
+
+            if not completion.choices:
+                logging.exception('No choices available!')
+                return None
+
+            if not completion.choices[0].message:
+                logging.exception('No message available!')
+                return None
+
+            if not completion.choices[0].message.content:
+                logging.exception('No content available!')
+                return None
+
             # 获取结果字符串
             text = completion.choices[0].message.content.strip()
 
@@ -137,8 +151,8 @@ class Marks():
 if __name__ == "__main__":
 
     # 日志配置
-    random = str(int(time.time()))[-3:]
-    log_path = os.path.join(config.folder, 'log', f'myapp_{random}.log')
+    times = int(time.time())
+    log_path = os.path.join(config.folder, 'log', f'myapp_{times}.log')
     print(log_path)
 
     logging.basicConfig(

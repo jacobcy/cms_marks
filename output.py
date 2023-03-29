@@ -4,6 +4,7 @@
 import os
 import re
 import time
+import shutil
 import logging
 import pandas as pd
 from setting import config
@@ -13,8 +14,8 @@ class Excel():
     def __init__(self):
         self.timestamp = int(time.time())
         # 指标名称
-        self.columns = ['timeliness', 'news_value', 'practicality', 'objectivity',
-                        'wideness', 'diversity', 'entertainment', 'popularity', 'mark']
+        self.columns = ['timing', 'nvalue', 'practical', 'objective',
+                        'local', 'business', 'joy', 'topic']
 
     # 默认读取test文件夹中的excel文件
     def read(self, file):
@@ -26,7 +27,17 @@ class Excel():
 
         return items
 
+    # 删除temp文件夹shutil.rmtree('temp')
+    def remove_temp(self):
+        temp = os.path.join(config.folder, 'temp')
+        if os.path.exists(temp):
+            shutil.rmtree(temp)
+            logging.info('删除temp文件夹')
+        else:
+            logging.info('temp文件夹不存在')
+
     # 读取temp文件夹中的excel文件
+
     def read_temp(self):
         data = []
 
@@ -34,7 +45,7 @@ class Excel():
         logging.info('正在读取temp文件夹中的文件')
 
         if not os.path.exists(temp):
-            os.mkdir('temp')
+            os.mkdir(temp)
             logging.info('创建temp文件夹')
 
         else:
@@ -81,28 +92,15 @@ class Excel():
         # 读取 Excel 文件
         df = pd.read_excel(excel_path)
 
-        # 删除不需要的列
-        df = df.drop(columns=['imgurl', 'pubtime',
-                     'published_at', 'intro', 'url'])
-
-        # 重新生成指标数据
-        # try:
-        #     df = df.drop(columns=['keywords', 'hot_related', 'reason'])
-        #     df = df.drop(columns=self.columns)
-        # except:
-        #     pass
-        # items = df.to_dict('records')
-        # for item in items:
-        #     evaluate = item['evaluate']
-        #     res = self.extract(evaluate)
-        #     if res:
-        #         for label, value in res.items():
-        #             item[label] = value
-        # 将json数据展平
-        # df = pd.json_normalize(items)
+        try:
+            # 删除不需要的列
+            df = df.drop(columns=['imgurl', 'pubtime',
+                                  'published_at', 'intro', 'url'])
+        except:
+            pass
 
         df1 = df.drop(columns=['evaluate'])
-        trans_columns = ['时效', '新闻', '实用', '客观', '广泛', '多元', '娱乐', '流行', '总分']
+        trans_columns = ['时效', '价值', '实用', '客观', '地域', '商业', '娱乐', '流行']
         mapping = dict(zip(self.columns, trans_columns))
 
         # 表头重命名为中文
@@ -113,21 +111,21 @@ class Excel():
             pass
 
         # 保存json格式的csv文件，便于查看评分
-        json_path = os.path.join(config.folder, 'data',
+        json_path = os.path.join(config.folder, 'data/output',
                                  f'output_{self.timestamp}.csv')
         df1.to_csv(json_path, index=False, encoding='utf-8-sig')
 
         # 删除多余的列
         try:
             df = df.drop(
-                columns=['source_from', 'keywords', 'hot_related', 'reason'])
+                columns=['source_from', 'keywords', 'hot_related', 'reason', 'mark'])
             df = df.drop(columns=self.columns)
         except:
             pass
         df = df.rename(columns={'title': 'prompt', 'evaluate': 'completion'})
 
         # 保存为jsonL格式的csv文件，用于上传训练
-        jsonL_path = os.path.join(config.folder, 'data',
+        jsonL_path = os.path.join(config.folder, 'data/train',
                                   f'training_data_{self.timestamp}.csv')
 
         with open(jsonL_path, 'w', encoding='utf-8') as f:
@@ -160,20 +158,19 @@ class Excel():
         values = {k: v for v, k in enumerate(self.columns)}
 
         patterns = [
-            r"时效性.*?(?P<timeliness>\d)分",
-            r"新闻性.*?(?P<news_value>\d)分",
-            r"实用性.*?(?P<practicality>\d)分",
-            r"客观性.*?(?P<objectivity>\d)分",
-            r"广泛性.*?(?P<wideness>\d)分",
-            r'多元化.*?(?P<diversity>\d)分',
-            r"娱乐性.*?(?P<entertainment>\d)分",
-            r'话题度.*?(?P<popularity>\d)分',
-            r'总分.*?(?P<mark>\d+)分'
+            r"时效性.*?(?P<timing>\d)分", r"新闻性.*?(?P<nvalue>\d)分", r"实用性.*?(?P<practical>\d)分", r"客观性.*?(?P<objective>\d)分", r"地域性.*?(?P<local>\d)分", r'商业性.*?(?P<business>\d)分', r"娱乐性.*?(?P<joy>\d)分", r'话题度.*?(?P<topic>\d)分'
+            # ,r'总分.*?(?P<mark>\d+)分'
         ]
 
         for item, value in values.items():
             match = re.search(patterns[value], text)
             result[item] = int(match.group(item)) if match else 0
+
+        # 计算总分
+        result['mark'] = result['timing'] + result['nvalue'] + result['practical'] + \
+            result['objective'] + result['joy'] + result['topic'] - \
+            result['local'] - result['business']
+        logging.info(f"计算总分为: {result['mark']}分\n")
 
         return result
 
@@ -187,13 +184,17 @@ if __name__ == "__main__":
         新闻性: 3分。介绍了一个新品的基本信息，但并没有详细介绍其特点和功能，新闻价值略低。
         实用性: 2分。介绍了一个新品的发布时间，对读者的实际应用价值不高。
         客观性: 5分。该新闻以事实为基础，没有使用主观或情绪化的语言。
-        广泛性: 2分。该新闻只涉及一个品牌和一个产品系列，对不同受众的吸引力不高。
-        多元化: 1分。该新闻仅介绍了单一产品，没有公益性的视角。
+        地域性: 2分。该新闻只涉及一个品牌和一个产品系列，对不同受众的吸引力不高。
+        商业性: 1分。该新闻仅介绍了单一产品，没有公益性的视角。
         娱乐性: 2分。该新闻仅介绍了单一产品，没有娱乐性。
         话题度: 2分。该新闻未出现在今日热搜，话题度不高。
         总分: 19分。
 
-        评分理由: 该新闻在时效性方面得分较高，但在新闻性、实用性、广泛性和公益性方面得分较低。虽然客观性方面得分较高，但是该新闻仅仅介绍了单一产品，完全没有公益性的视角，是一篇软性广告。话题度方面得分也不高。综上所述，该新闻总分较低。
+        评分理由: 该新闻在时效性方面得分较高，但在新闻性、实用性、地域性和公益性方面得分较低。虽然客观性方面得分较高，但是该新闻仅仅介绍了单一产品，完全没有公益性的视角，是一篇软性广告。话题度方面得分也不高。综上所述，该新闻总分较低。
     '''
     e = Excel()
-    print(e.extract('text'))
+    # d = e.extract(text)
+    # e.save('temp', [d])
+
+    d = e.read_temp()
+    e.save('test', d)
