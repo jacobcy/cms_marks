@@ -1,10 +1,10 @@
-from setting import config
+from setting import Excel
 import openai
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AdamW
 
 # 设置openai api密钥
-openai.api_key = config.key
+openai.api_key = Excel.key
 
 # 初始化tokenizer和模型
 tokenizer = AutoTokenizer.from_pretrained("textattack/bert-base-uncased-imdb")

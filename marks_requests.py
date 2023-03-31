@@ -3,10 +3,10 @@ import requests
 import json
 import re
 import pandas as pd
-from setting import config
+from setting import Excel
 import asyncio
 
-accessToken = config.key
+accessToken = Excel.key
 
 
 def getRate(values):

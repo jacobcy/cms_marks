@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import openai
-from setting import config
+from setting import Excel
 
 # 使用 API 密钥进行身份验证
-openai.api_key = config.key
+openai.api_key = Excel.key
 
 model = "curie:ft-silly-fish-2023-03-15-02-50-16"
 

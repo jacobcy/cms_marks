@@ -3,7 +3,6 @@
 import json
 import time
 import logging
-from datetime import datetime
 
 # 导入selenium模块
 from selenium import webdriver
@@ -17,57 +16,40 @@ from setting import config
 from output import Excel
 
 
-def time_gap(timestamp):
-    # 将时间戳转换为 datetime 对象
-    dt = datetime.fromtimestamp(timestamp)
-
-    # 计算与当前时间的差
-    delta = datetime.now() - dt
-
-    # 计算差值的小时数
-    hours_diff = delta.seconds // 3600
-    return hours_diff
-
-# if time_gap(ptm) > 72:
-#     pass
-
-
-class CMS():
+class CMS:
     def __init__(self, data=[]):
-
-        logging.info('正在打开浏览器...\n')
-
-        self.excel = Excel()
-
-        self.raw_data = data
-        if not self.raw_data:
-            self.raw_data = self.excel.read_temp()
-            logging.info(f'读取临时文件中的数据{len(self.raw_data)}条\n')
+        # 先读取temp中的excel数据
+        if not data:
+            data = Excel.read_temp()
+        # 如果没有数据,则退出
+        if not data:
+            logging.info('No data available!')
+            exit(0)
+        # 判断data中的数据是否完整
+        for item in data:
+            if not Excel.is_complete(item):
+                data.pop(item)
 
         # 按照总分进行排序
-        self.raw_data = sorted(
-            self.raw_data, key=lambda x: x['mark'], reverse=True)
-
-        # 最多36个节点
-        self.data = self.raw_data[:36]
+        data = sorted(
+            data, key=lambda x: x['mark'], reverse=True)
+        self.data = data
+        # 打印数据
         logging.info(json.dumps(self.data[:1], indent=4, ensure_ascii=False))
 
+        logging.info('正在打开浏览器...\n')
         # 创建一个Options对象，并添加detach选项
         chrome_options = Options()
         chrome_options.add_experimental_option("detach", True)
-
         # 添加参数"–ignore-certificate-errors"
         chrome_options.add_argument("--ignore-certificate-errors")
-
         # 创建一个WebDriver对象，并传入Options对象
         self.driver = webdriver.Chrome(options=chrome_options)
-
         # 等待页面加载
         self.driver.implicitly_wait(5)
         self.wait = WebDriverWait(self.driver, 5)
 
     # 点击第一个链接，等待第二个链接出现
-
     def click_and_wait(self, css_selector1, css_selector2):
         for i in range(2):
             time.sleep(2)
@@ -75,17 +57,14 @@ class CMS():
             try:
                 self.driver.find_element(
                     By.CSS_SELECTOR, css_selector1).click()
-
             except Exception as e:
                 logging.exception(f"无法点击链接 {css_selector1}: {e}")
-
             try:
                 self.wait.until(EC.presence_of_element_located(
                     (By.CSS_SELECTOR, css_selector2)))
                 return
             except Exception as e:
                 logging.exception(f"无法找到下一个链接 {css_selector2}: {e}")
-
         # 如果超过最大重试次数仍然无法进入下一步，则抛出异常
         raise Exception("无法进入下一步")
 
@@ -94,32 +73,73 @@ class CMS():
             self.click_and_wait(clicks[i], clicks[i+1])
 
     def login(self):
-
         # 打开网站并输入用户名和密码
         self.driver.get(config.url)
         time.sleep(2)
-
         # 输入用户名和密码
         username = self.driver.find_element(By.ID, "email")
         username.send_keys(config.email)
-
         password = self.driver.find_element(By.ID, "password")
         password.send_keys(config.password)
-
         time.sleep(2)
         submit_button = self.driver.find_element(By.ID, "login-submit")
         submit_button.click()
 
+    # 输入数据
+    def input_data(self, num):
+        inputs = ['title', 'url', 'imgurl',
+                  'intro', 'published_at', 'source_from']
+        for j in range(len(inputs)):
+            if num > len(self.data):
+                logging.error('没有足够的数据')
+                # 保存数据并关闭浏览器
+                self.backup()
+                exit(0)
+            item = self.data[num-1]
+            if inputs[j] not in item:
+                logging.error(f"数据缺失: {inputs[j]}")
+                continue
+            t = item[inputs[j]]
+            time.sleep(1)
+            # 在输入框中输入文本
+            input_box = self.driver.find_element(
+                By.ID, inputs[j])
+            input_box.clear()
+            input_box.send_keys(t)
+        # 点击提交按钮
+        time.sleep(1)
+        submit_button = self.driver.find_element(By.CSS_SELECTOR,
+                                                 "li.space:nth-child(24) > input[type='submit']")
+        submit_button.click()
+        try:
+            # 等待弹窗出现并点击确定按钮
+            self.wait.until(EC.alert_is_present())
+            alert = self.driver.switch_to.alert
+            logging.debug('点击确定按钮')
+            alert.accept()
+            time.sleep(1)
+            return True
+        except Exception as e:
+            logging.warning(f"无法提交，可能数据重复")
+            return False
+
+    # 备份执行数据
+    def backup(self):
+        # 备份数据
+        path = Excel.save('data', self.data, False)
+        Excel.toJson(path)
+        # 清空temp文件夹
+        Excel.remove_temp()
+        time.sleep(5)
+        # 关闭浏览器
+        self.driver.quit()
+
     # 利用selenium更新cms中的数据
-
     def update(self):
-
         if not self.data:
             logging.info('没有数据需要更新')
             return
-
         self.login()
-
         # 点击链接并等待页面加载
         clicks = [
             '.nav > li:nth-child(2) > a:nth-child(1)',
@@ -128,85 +148,61 @@ class CMS():
             'ul.tree:nth-child(2) > li:nth-child(1) > div:nth-child(1) > span:nth-child(1) > a:nth-child(2)'
         ]
         self.click_and_wait_sequence(clicks)
-
+        num = 0
         # 遍历子节点，填入更新数据
-        for i in range(len(self.data)):
+        for i in range(36):
+            num += 1
             item = self.driver.find_element(
                 By.CSS_SELECTOR, f"ul.tree:nth-child(2) > li:nth-child({i+1}) > div:nth-child(1) > span:nth-child(1) > a:nth-child(2)")
             if not item:
                 break
-
             # 切换到新页面
             handles = self.driver.window_handles
             while len(handles) < 2:
                 item.click()
                 time.sleep(2)
                 handles = self.driver.window_handles
-
             try:
                 self.driver.switch_to.window(handles[-1])
             except NoSuchWindowException:
                 continue
-
-            inputs = ['title', 'url', 'imgurl',
-                      'intro', 'published_at', 'source_from']
-
-            for j in range(len(inputs)):
-                if self.data[i][inputs[j]]:
-                    time.sleep(1)
-                    # 在输入框中输入文本
-                    input_box = self.driver.find_element(
-                        By.ID, inputs[j])
-                    input_box.clear()
-                    input_box.send_keys(self.data[i][inputs[j]])
-
-            # 点击提交按钮
-            time.sleep(1)
-            submit_button = self.driver.find_element(By.CSS_SELECTOR,
-                                                     "li.space:nth-child(24) > input[type='submit']")
-            submit_button.click()
-
-            try:
-                # 等待弹窗出现并点击确定按钮
-                self.wait.until(EC.alert_is_present())
-                time.sleep(1)
-                alert = self.driver.switch_to.alert
-                alert.accept()
-
-                # 关闭新页面并切换回原来的页面
-                handles = self.driver.window_handles
-                while len(handles) > 1:
+            # 输入数据
+            logging.info(f"正在更新第 {num} 条数据")
+            summit = self.input_data(num)
+            if not summit:
+                while True:
+                    num += 1
+                    logging.warning(f"提交失败，尝试第 {num} 条数据")
+                    summit = self.input_data(num)
+                    if summit:
+                        break
+            logging.info(f"数据更新成功,确定后返回原页面 ")
+            # 检查弹窗页面是否关闭，等待5s
+            handles = self.driver.window_handles
+            for k in range(5):
+                if len(handles) > 1:
+                    logging.warning(f"弹窗未关闭，等待 {5-k} 秒")
                     time.sleep(1)
                     handles = self.driver.window_handles
-            except:
+            # 强制返回原页面
+            if len(handles) > 1:
+                logging.warning(f"手动关闭弹窗页面，返回原页面")
                 self.driver.close()
-                time.sleep(2)
-                handles = self.driver.window_handles
-
             try:
                 self.driver.switch_to.window(handles[0])
             except NoSuchWindowException:
+                logging.error(f"无法切换到原页面,强制切换")
                 self.driver.switch_to.default_content()
-
+        # 执行更新
         self.driver.get(config.execute_url)
-        time.sleep(5)
-
-        # 备份数据
-        path = self.excel.save('data', self.raw_data)
-        self.excel.toJson(path)
-
-        # 清空temp文件夹
-        self.excel.remove_temp()
-
-        # 关闭浏览器
-        self.driver.quit()
+        # 保存数据并关闭浏览器
+        self.backup()
 
 
 if __name__ == "__main__":
-
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s: %(message)s',
         encoding='utf-8')
-
-    CMS().update()
+    cms = CMS()
+    cms.update()

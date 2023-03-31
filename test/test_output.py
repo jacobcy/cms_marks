@@ -73,3 +73,5 @@ class TestExtract(unittest.TestCase):
 
 if __name__ == 'main':
     unittest.main()
+    # 字符串转为json
+    # json.dumps(data, ensure_ascii=False)
