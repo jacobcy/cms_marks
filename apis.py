@@ -34,7 +34,7 @@ class API:
             if keys:
                 openai.api_key = keys.pop(0)
             else:
-                logging.exception('No API key available!')
+                logging.exception('No other API key available!')
             return None
 
     # 通过api获取数据

@@ -27,6 +27,9 @@ class Excel:
 
     # 读取excel文件并保存为jsonL格式
     def toJson(excel_path):
+        if not os.path.exists(excel_path):
+            logging.info(f'文件不存在: {excel_path}')
+            return
         # 读取 Excel 文件
         df = pd.read_excel(excel_path)
         try:
@@ -52,7 +55,8 @@ class Excel:
         # 删除多余的列
         try:
             df = df.drop(
-                columns=['source_from', 'keywords', 'hot_related', 'reason', 'mark'])
+                columns=['source_from', 'mark'  # , 'keywords', 'hot_related', 'reason'
+                         ])
             df = df.drop(columns=Excel.columns)
         except:
             pass
@@ -213,21 +217,22 @@ class Excel:
 
     # 提取评分结果中的指标数据
     def extract(text):
-        # 提取关键词、是否热搜、理由
-        pattern = r"关键词(?P<keywords>.*?)\n.*?热搜.*?(?P<hot_related>是|否).*?理由(?P<reason>[\s\S]*)"
-        match = re.search(pattern, text, re.DOTALL)
-        result = match.groupdict() if match else {}
-        # 后处理关键词
-        if result and result['keywords']:
-            result['keywords'] = re.sub(r'[,，、]', ' ', result['keywords'])
-            result['keywords'] = re.sub(
-                r'[^\w\s]', '', result['keywords']).strip()
-        logging.debug(f"关键词：{result['keywords']}")
-        # 后处理理由
-        if result and result['reason']:
-            # 替换冒号
-            result['reason'] = re.sub('[：:]', '', result['reason']).strip()
-        logging.debug(f"理由：{result['reason']}")
+        result = {}
+        # # 提取关键词、是否热搜、理由
+        # pattern = r"关键词(?P<keywords>.*?)\n.*?热搜.*?(?P<hot_related>是|否).*?理由(?P<reason>[\s\S]*)"
+        # match = re.search(pattern, text, re.DOTALL)
+        # result = match.groupdict() if match else {}
+        # # 后处理关键词
+        # if result and result['keywords']:
+        #     result['keywords'] = re.sub(r'[,，、]', ' ', result['keywords'])
+        #     result['keywords'] = re.sub(
+        #         r'[^\w\s]', '', result['keywords']).strip()
+        # logging.debug(f"关键词：{result['keywords']}")
+        # # 后处理理由
+        # if result and result['reason']:
+        #     # 替换冒号
+        #     result['reason'] = re.sub('[：:]', '', result['reason']).strip()
+        # logging.debug(f"理由：{result['reason']}")
         # 提取指标数据
         values = {k: v for v, k in enumerate(Excel.columns)}
         patterns = [

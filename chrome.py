@@ -34,6 +34,7 @@ class CMS:
         data = sorted(
             data, key=lambda x: x['mark'], reverse=True)
         self.data = data
+        self.num = 0
         # 打印数据
         logging.info(json.dumps(self.data[:1], indent=4, ensure_ascii=False))
 
@@ -86,16 +87,12 @@ class CMS:
         submit_button.click()
 
     # 输入数据
-    def input_data(self, num):
+    def input_data(self):
         inputs = ['title', 'url', 'imgurl',
                   'intro', 'published_at', 'source_from']
+        item = self.data[self.num-1]
+        logging.info(f"正在输入数据: {item['title']}")
         for j in range(len(inputs)):
-            if num > len(self.data):
-                logging.error('没有足够的数据')
-                # 保存数据并关闭浏览器
-                self.backup()
-                exit(0)
-            item = self.data[num-1]
             if inputs[j] not in item:
                 logging.error(f"数据缺失: {inputs[j]}")
                 continue
@@ -130,15 +127,17 @@ class CMS:
         Excel.toJson(path)
         # 清空temp文件夹
         Excel.remove_temp()
-        time.sleep(5)
+        time.sleep(config.waiting_time)
         # 关闭浏览器
         self.driver.quit()
 
     # 利用selenium更新cms中的数据
     def update(self):
+        # 如果没有数据需要更新，则退出
         if not self.data:
             logging.info('没有数据需要更新')
             return
+        # 登录
         self.login()
         # 点击链接并等待页面加载
         clicks = [
@@ -148,10 +147,15 @@ class CMS:
             'ul.tree:nth-child(2) > li:nth-child(1) > div:nth-child(1) > span:nth-child(1) > a:nth-child(2)'
         ]
         self.click_and_wait_sequence(clicks)
-        num = 0
         # 遍历子节点，填入更新数据
-        for i in range(36):
-            num += 1
+        for i in range(config.total_node_num):
+
+            # 检查是否有足够的数据
+            self.num += 1
+            if self.num > len(self.data):
+                logging.error('没有足够的数据')
+                break
+            # 点击子节点
             item = self.driver.find_element(
                 By.CSS_SELECTOR, f"ul.tree:nth-child(2) > li:nth-child({i+1}) > div:nth-child(1) > span:nth-child(1) > a:nth-child(2)")
             if not item:
@@ -167,16 +171,16 @@ class CMS:
             except NoSuchWindowException:
                 continue
             # 输入数据
-            logging.info(f"正在更新第 {num} 条数据")
-            summit = self.input_data(num)
+            logging.info(f"正在更新第 {self.num} 条数据")
+            summit = self.input_data()
             if not summit:
                 while True:
-                    num += 1
-                    logging.warning(f"提交失败，尝试第 {num} 条数据")
-                    summit = self.input_data(num)
+                    self.num += 1
+                    logging.warning(f"提交失败，尝试第 {self.num} 条数据")
+                    summit = self.input_data()
                     if summit:
                         break
-            logging.info(f"数据更新成功,确定后返回原页面 ")
+            logging.info("数据更新成功,确定后返回原页面")
             # 检查弹窗页面是否关闭，等待5s
             handles = self.driver.window_handles
             for k in range(5):

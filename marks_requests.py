@@ -4,7 +4,6 @@ import json
 import re
 import pandas as pd
 from setting import Excel
-import asyncio
 
 accessToken = Excel.key
 

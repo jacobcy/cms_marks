@@ -41,15 +41,18 @@ class Data:
     def get_conversation():
         cs = [{
             'role': 'system', 'content': '''
-    我请你扮演一名网站编辑，帮助我完成：
-    1、筛选出12条具有吸引力且涉及不同话题的新闻。
-    2、每个主题仅选择一条新闻，避免包含重复或相似主题。
-    3、按照话题热度进行排序，与今日热搜相关的话题位置靠前。
-    4、返回新闻标题列表，格式如下：
-    [{"no": 编号1, "title": "新闻标题1"},
-    {"no": 编号2, "title": "新闻标题2"}]
+    我请你扮演一名网站编辑，帮助我筛选出12条具有吸引力且涉及不同话题的新闻。
 
-    注意：请返回满足格式要求的JSON格式。不要解释，不要改变新闻编号，不要添加任何多余字符。
+    筛选标准：
+    1、考虑文章的时效性，新闻性，是否值得被读者评论、点赞和分享。
+    2、每个主题仅选择一条新闻，避免出现重复或相似主题。
+    3、按照话题热度进行排序，与今日热搜相关的话题位置靠前。
+    Please think step by step.
+  
+    返回JSON格式的新闻编号列表，格式如下：
+    [{"no": <编号1>},
+    {"no": <编号2>}]
+    要求：不要改变新闻编号，不要解释，不要添加任何多余字符。
 
     今日热搜：
         ''' + API.aggre()}]
@@ -129,12 +132,12 @@ class Data:
         while True:
             print(
                 f'There remain {len(data)} items for selection.')
-            if len(data) < 120:
+            if len(data) <= 120:
                 break
 
-            # 每次从data中取36条数据,组成items
-            items = data[:36]
-            data = data[36:]
+            # 每次从data中取48条数据,组成items
+            items = data[:48]
+            data = data[48:]
             # 从openai api获取排序结果
             results = self.get_json(items)
             if not results:
@@ -164,9 +167,11 @@ class Data:
             # 将筛选结果保存到data/api中
             logging.info(f'Save {len(data)} items to data/api.\n')
             Excel.save('data/api', data, False)
-            # 休眠6秒，避免openai api频繁调用
-            time.sleep(6)
+            # 避免openai api频繁调用
+            time.sleep(config.waiting_time)
 
+        # data倒序排列
+        data.reverse()
         # 更新本地api数据
         Data.backup(data)
         # 对筛选的新闻进行打分
