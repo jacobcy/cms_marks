@@ -75,6 +75,14 @@ class Excel:
                 f.write(json_str)
                 f.write('\n')
 
+    def read_data(path):
+        file = os.path.join(config.folder, path, 'items.xlsx')
+        if not os.path.exists(file):
+            logging.info(f'文件不存在: {file}')
+            return {}
+        # 读取 Excel 文件
+        return Excel.read_xls_to_dict(file)
+
     # 读取excel文件,并转换为字典列表
     def read_xls_to_dict(file):
         # 判断file是否为绝对路径
@@ -118,7 +126,7 @@ class Excel:
         return data
 
     # 保存文件
-    def save(folder='data', items=[], random=True):
+    def save(folder=r'data', items=[], random=True):
         path = os.path.join(config.folder, folder)
         logging.info(f'保存文件到目录：{path}')
         if not os.path.exists(path):
@@ -132,8 +140,11 @@ class Excel:
             df = pd.DataFrame.from_records(items)
         # 将nan替换为空字符串，不区分大小写
         df = df.replace(re.compile('nan', re.I), '')
-        # 去除空行
-        df = df.dropna(how='any', subset=['url', 'imgurl', 'title'])
+        try:
+            # 去除空行
+            df = df.dropna(how='any', subset=['url', 'imgurl', 'title'])
+        except Exception as e:
+            logging.exception(f'Failed to drop empty rows: {e}')
         # 去重
         df = df.drop_duplicates(subset=['url'])
 
@@ -162,35 +173,42 @@ class Excel:
     # 对items2的数据，根据'url'字段唯一性合并到items1中，返回合并后的数组
     def merge(items1, items2):
         if not len(items1):
-            return items2
-        items = items1
-        # 获取items1中pubtime最大的时间戳
-        max_timestamp = max([i['pubtime'] for i in items])
-        # 获取items1中的所有url
-        urls = [i['url'] for i in items]
-        for item in items2:
-            # 如果item的时间戳小于items1中的最大时间戳，则跳过
-            if item['pubtime'] <= max_timestamp:
-                continue
-            if item['url'] in urls:
-                logging.info(f'已存在新闻：{item["title"]}')
-                continue
-            if Excel.is_complete(item):
+            items = items2
+        else:
+            items = items1
+            # 获取items1中pubtime最近的时间戳
+            max_timestamp = max([i['pubtime'] for i in items])
+            # 获取items1中的所有url
+            urls = [i['url'] for i in items]
+            for item in items2:
+                if item['url'] in urls:
+                    logging.info(f'已存在新闻：{item["title"]}')
+                    continue
+                # 如果item的时间戳小于items1中的最大时间戳，则跳过
+                if item['pubtime'] <= max_timestamp:
+                    logging.info(f'已检测新闻：{item["title"]}')
+                    continue
                 items.append(item)
+        for item in items:
+            # 检查数据完整性
+            if not Excel.is_complete(item):
+                # items中删除item
+                logging.info(f'数据不完整：{item["title"]}')
+                items.remove(item)
         logging.info(f'合并后的数据量：{len(items)}')
         return items
 
     # 判断item的'url'、'imgurl'、'title'、'intro'字段是否完整
     def is_complete(item):
         # 判断item中是否存在nan字段
-        for key, value in item.items():
-            if re.search('nan', str(value), re.I):
-                logging.warning(f'存在nan字段：{item}')
-            if re.search('null', str(value), re.I):
-                logging.warning(f'存在null字段：{item}')
-            if re.search('none', str(value), re.I):
-                logging.warning(f'存在null字段：{item}')
-        if item['url'] and item['imgurl'] and item['title'] and item['intro'] and len(item['intro']) > 60:
+        # for key, value in item.items():
+        # if re.search('nan', str(value), re.I):
+        #     logging.warning(f'存在nan字段：{item}')
+        # if re.search('null', str(value), re.I):
+        #     logging.warning(f'存在null字段：{item}')
+        # if re.search('none', str(value), re.I):
+        #     logging.warning(f'存在null字段：{item}')
+        if item['url'] and item['imgurl'] and item['title'] and item['intro'] and len(item['intro']) > 80:
             # item是否存在pubtime或published_at字段，且不为0
             if 'pubtime' in item.keys() and item['pubtime']:
                 return True
@@ -200,15 +218,11 @@ class Excel:
 
     # 计算时间差
     def time_gap(timestamp):
-        # 获取当前时间戳
-        # now = int(time.time())
         # 将时间戳转换为 datetime 对象
         dt = datetime.fromtimestamp(timestamp)
         # 计算与当前时间的差
         delta = datetime.now() - dt
-        # 计算差值的小时数
-        hours_diff = delta.seconds // 3600
-        return hours_diff
+        return delta.days
 
     # 转换时间格式
     def convert_time(timestamp):

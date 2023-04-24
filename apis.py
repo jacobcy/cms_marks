@@ -1,8 +1,11 @@
 import json
 import logging
+import random
 import requests
 import openai
+
 from setting import config
+from output import Excel
 
 # 获取今日热搜，包含抖音、百度
 keys = config.keys
@@ -28,14 +31,14 @@ class API:
             # 返回结果
             return text
         except Exception as e:
-            logging.info('Here is the error:\n ')
-            logging.exception(e)
+            print('Could not get the openAI result.\n ')
+            # logging.exception(e)
             # 切换 API 密钥
-            if keys:
+            if len(keys) > 0:
                 openai.api_key = keys.pop(0)
             else:
-                logging.exception('No other API key available!')
-            return None
+                logging.warning('No other API key available!')
+            return
 
     # 通过api获取数据
 
@@ -53,28 +56,32 @@ class API:
             items = response.json()['items']
             if num:
                 items = items[:num]
+            # 转换时间格式
+            for item in items:
+                item["published_at"] = Excel.convert_time(item['pubtime'])
             logging.info(f'Get {len(items)} items from {api}.')
             all_items.extend(items)
         logging.info(f'Get {len(all_items)} items from all apis.\n')
-        # 保存临时数据
-        # try:
-        #     Excel.save('temp_api', all_items)
-        # except Exception as e:
-        #     logging.exception(e)
+        # 随机排序
+        random.shuffle(all_items)
         return all_items
 
     def douyin():
-        json_data = None
+        items = []
         try:
             response = requests.get(
                 'https://www.douyin.com/aweme/v1/web/ad/hotspot/?ug_source=hh_rb')
 
             # 将响应解析为JSON格式
             json_data = json.loads(response.content.decode('utf-8'))
-            logging.info('抖音热搜获取成功')
-        except:
-            logging.info('抖音热搜获取失败')
-        items = json_data['head_line'] if json_data else []
+            items = json_data['head_line']
+            if not items:
+                logging.info('无法获取抖音热搜')
+            else:
+                logging.info('抖音热搜获取成功')
+        except Exception as e:
+            logging.error('抖音热搜获取失败:')
+            logging.exception(e)
         return items
 
     def baidu():

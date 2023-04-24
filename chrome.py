@@ -1,5 +1,6 @@
 #!python
 
+import re
 import json
 import time
 import logging
@@ -20,7 +21,7 @@ class CMS:
     def __init__(self, data=[]):
         # 先读取temp中的excel数据
         if not data:
-            data = Excel.read_temp()
+            data = Excel.read_data(r'data')
         # 如果没有数据,则退出
         if not data:
             logging.info('No data available!')
@@ -31,8 +32,7 @@ class CMS:
                 data.pop(item)
 
         # 按照总分进行排序
-        data = sorted(
-            data, key=lambda x: x['mark'], reverse=True)
+        # data = sorted(data, key=lambda x: x['mark'], reverse=True)
         self.data = data
         self.num = 0
         # 打印数据
@@ -91,18 +91,24 @@ class CMS:
         inputs = ['title', 'url', 'imgurl',
                   'intro', 'published_at', 'source_from']
         item = self.data[self.num-1]
+        if not Excel.is_complete(item):
+            logging.error(f"数据不完整: {item}")
+            return False
         logging.info(f"正在输入数据: {item['title']}")
         for j in range(len(inputs)):
-            if inputs[j] not in item:
+            if inputs[j] not in item or re.search('nan', str(inputs[j]), re.I):
                 logging.error(f"数据缺失: {inputs[j]}")
-                continue
+                return False
             t = item[inputs[j]]
             time.sleep(1)
             # 在输入框中输入文本
             input_box = self.driver.find_element(
                 By.ID, inputs[j])
             input_box.clear()
-            input_box.send_keys(t)
+            try:
+                input_box.send_keys(t)
+            except:
+                logging.exception(f"无法输入数据: {t}")
         # 点击提交按钮
         time.sleep(1)
         submit_button = self.driver.find_element(By.CSS_SELECTOR,
@@ -126,7 +132,8 @@ class CMS:
         path = Excel.save('data', self.data, False)
         Excel.toJson(path)
         # 清空temp文件夹
-        Excel.remove_temp()
+        # Excel.remove_temp()
+        # Excel.remove_temp('temp_api')
         time.sleep(config.waiting_time)
         # 关闭浏览器
         self.driver.quit()
@@ -153,7 +160,7 @@ class CMS:
             # 检查是否有足够的数据
             self.num += 1
             if self.num > len(self.data):
-                logging.error('没有足够的数据')
+                logging.error('没有足够的数据继续更新')
                 break
             # 点击子节点
             item = self.driver.find_element(
