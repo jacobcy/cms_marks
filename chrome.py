@@ -19,7 +19,7 @@ from output import Excel
 
 class CMS:
     def __init__(self, data=[]):
-        # 先读取temp中的excel数据
+        # 先读取本地excel数据
         if not data:
             data = Excel.read_data(r'data')
         # 如果没有数据,则退出
@@ -32,9 +32,9 @@ class CMS:
                 data.pop(item)
 
         # 按照总分进行排序
-        # data = sorted(data, key=lambda x: x['mark'], reverse=True)
+        data = sorted(data, key=lambda x: x['mark'], reverse=True)
         self.data = data
-        self.num = 0
+        self.num = 1
         # 打印数据
         logging.info(json.dumps(self.data[:1], indent=4, ensure_ascii=False))
 
@@ -86,46 +86,6 @@ class CMS:
         submit_button = self.driver.find_element(By.ID, "login-submit")
         submit_button.click()
 
-    # 输入数据
-    def input_data(self):
-        inputs = ['title', 'url', 'imgurl',
-                  'intro', 'published_at', 'source_from']
-        item = self.data[self.num-1]
-        if not Excel.is_complete(item):
-            logging.error(f"数据不完整: {item}")
-            return False
-        logging.info(f"正在输入数据: {item['title']}")
-        for j in range(len(inputs)):
-            if inputs[j] not in item or re.search('nan', str(inputs[j]), re.I):
-                logging.error(f"数据缺失: {inputs[j]}")
-                return False
-            t = item[inputs[j]]
-            time.sleep(1)
-            # 在输入框中输入文本
-            input_box = self.driver.find_element(
-                By.ID, inputs[j])
-            input_box.clear()
-            try:
-                input_box.send_keys(t)
-            except:
-                logging.exception(f"无法输入数据: {t}")
-        # 点击提交按钮
-        time.sleep(1)
-        submit_button = self.driver.find_element(By.CSS_SELECTOR,
-                                                 "li.space:nth-child(24) > input[type='submit']")
-        submit_button.click()
-        try:
-            # 等待弹窗出现并点击确定按钮
-            self.wait.until(EC.alert_is_present())
-            alert = self.driver.switch_to.alert
-            logging.debug('点击确定按钮')
-            alert.accept()
-            time.sleep(1)
-            return True
-        except Exception as e:
-            logging.warning(f"无法提交，可能数据重复")
-            return False
-
     # 备份执行数据
     def backup(self):
         # 备份数据
@@ -155,59 +115,121 @@ class CMS:
         ]
         self.click_and_wait_sequence(clicks)
         # 遍历子节点，填入更新数据
-        for i in range(config.total_node_num):
+        for i in range(0, config.total_node_num):
 
-            # 检查是否有足够的数据
-            self.num += 1
-            if self.num > len(self.data):
-                logging.error('没有足够的数据继续更新')
+            # 更新第i个节点
+            res = self.update_node(i)
+            if res is False:
+                logging.error(f"更新节点失败")
                 break
-            # 点击子节点
-            item = self.driver.find_element(
-                By.CSS_SELECTOR, f"ul.tree:nth-child(2) > li:nth-child({i+1}) > div:nth-child(1) > span:nth-child(1) > a:nth-child(2)")
-            if not item:
-                break
-            # 切换到新页面
-            handles = self.driver.window_handles
-            while len(handles) < 2:
-                item.click()
-                time.sleep(2)
-                handles = self.driver.window_handles
-            try:
-                self.driver.switch_to.window(handles[-1])
-            except NoSuchWindowException:
-                continue
-            # 输入数据
-            logging.info(f"正在更新第 {self.num} 条数据")
-            summit = self.input_data()
-            if not summit:
-                while True:
-                    self.num += 1
-                    logging.warning(f"提交失败，尝试第 {self.num} 条数据")
-                    summit = self.input_data()
-                    if summit:
-                        break
-            logging.info("数据更新成功,确定后返回原页面")
-            # 检查弹窗页面是否关闭，等待5s
-            handles = self.driver.window_handles
-            for k in range(5):
-                if len(handles) > 1:
-                    logging.warning(f"弹窗未关闭，等待 {5-k} 秒")
-                    time.sleep(1)
-                    handles = self.driver.window_handles
-            # 强制返回原页面
-            if len(handles) > 1:
-                logging.warning(f"手动关闭弹窗页面，返回原页面")
-                self.driver.close()
-            try:
-                self.driver.switch_to.window(handles[0])
-            except NoSuchWindowException:
-                logging.error(f"无法切换到原页面,强制切换")
-                self.driver.switch_to.default_content()
+
         # 执行更新
         self.driver.get(config.execute_url)
         # 保存数据并关闭浏览器
         self.backup()
+
+    # 更新第n个节点
+    def update_node(self, n):
+        # 检查是否有足够的数据
+        if self.num > len(self.data):
+            logging.error('没有足够的数据继续更新')
+            return False
+        
+        # 点击子节点
+        item = self.driver.find_element(
+            By.CSS_SELECTOR, f"ul.tree:nth-child(2) > li:nth-child({n+1}) > div:nth-child(1) > span:nth-child(1) > a:nth-child(2)")
+        if not item:
+            return False
+        
+        # 切换到新页面
+        handles = self.driver.window_handles
+        while len(handles) < 2:
+            item.click()
+            time.sleep(2)
+            handles = self.driver.window_handles
+        try:
+            # 切换到新页面
+            self.driver.switch_to.window(handles[-1])
+        except NoSuchWindowException:
+            logging.error(f"无法切换到新页面")
+            return
+        
+        # 更新节点数据
+        summit = False
+        while True:
+            # 输入数据
+            logging.info(f"正在更新第 {self.num} 条数据")
+            try:
+                summit = self.input_data()
+                self.num += 1
+                if self.num > len(self.data):
+                    logging.error('没有足够的数据继续更新')
+                    return False
+                if summit:
+                    logging.info("数据更新成功")
+                    break
+            except:
+                logging.exception(f"无法输入第 {self.num} 条数据")
+                self.switch_to_default_content()
+                self.num += 1
+                self.update_node(n)
+
+    # 输入数据
+    def input_data(self):
+        inputs = ['title', 'url', 'imgurl',
+                  'intro', 'published_at', 'source_from']
+        item = self.data[self.num-1]
+        if not Excel.is_complete(item):
+            logging.error(f"数据不完整: {item}")
+            return False
+        # logging.info(f"正在输入数据: {item}")
+        logging.info(f"正在输入数据: {item['title']}")
+        for j in range(len(inputs)):
+            if inputs[j] not in item or re.search('nan', str(inputs[j]), re.I):
+                logging.error(f"数据缺失: {inputs[j]}")
+                return False
+            t = item[inputs[j]]
+            time.sleep(1)
+            # 在输入框中输入文本
+            input_box = self.driver.find_element(
+                By.ID, inputs[j])
+            input_box.clear()
+            input_box.send_keys(t)
+        # 点击提交按钮
+        time.sleep(1)
+        submit_button = self.driver.find_element(By.CSS_SELECTOR,
+                                                 "li.space:nth-child(24) > input[type='submit']")
+        submit_button.click()
+        try:
+            # 等待弹窗出现并点击确定按钮
+            self.wait.until(EC.alert_is_present())
+            alert = self.driver.switch_to.alert
+            logging.debug('点击确定按钮')
+            alert.accept()
+            time.sleep(1)
+            # 返回主页面
+            self.switch_to_default_content()
+            return True
+        except Exception as e:
+            logging.warning(f"无法提交，可能数据重复")
+            return False
+
+    # 强制返回主页面
+    def switch_to_default_content(self):
+        handles = self.driver.window_handles
+        for k in range(3):
+            if len(handles) > 1:
+                logging.warning(f"弹窗未关闭，等待 {3-k} 秒")
+                time.sleep(1)
+                handles = self.driver.window_handles
+        if len(handles) > 1:
+            logging.warning(f"手动关闭当前页面")
+            self.driver.close()
+        try:
+            self.driver.switch_to.window(handles[0])
+        except NoSuchWindowException:
+            logging.error(f"无法切换到原页面,强制切换")
+            self.driver.switch_to.default_content()
 
 
 if __name__ == "__main__":
